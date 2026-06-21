@@ -99,35 +99,35 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function queryTerms(query) {
-  const terms = [];
-  const re = /"([^"]+)"|(\S+)/g;
-  let match;
-  while ((match = re.exec(query))) {
-    const term = (match[1] || match[2] || "").trim();
-    if (term.length >= 2) terms.push(term);
-  }
-  return terms.slice(0, 8);
+function highlightTermsForSearch(query, mode, escapeSpace) {
+  const raw =
+    mode === SEARCH_MODE_FILE ? normalizeFileQueryInput(query) : String(query || "").trim();
+  if (!raw) return [];
+  if (escapeSpace) return [raw];
+  return raw.split(/\s+/).filter(Boolean);
 }
 
-function buildLiteralHighlightPattern(query) {
-  const terms = queryTerms(query);
+function buildLiteralHighlightPattern(query, mode, escapeSpace) {
+  const terms = highlightTermsForSearch(query, mode, escapeSpace);
   if (!terms.length) return null;
   return new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "ig");
 }
 
-function buildRegexHighlightPattern(query, mode) {
-  const raw =
-    mode === SEARCH_MODE_FILE ? normalizeFileQueryInput(query) : String(query || "").trim();
-  if (!raw) return null;
-  const pattern = raw
-    .replace(/^content:/i, "")
-    .replace(/^file:/i, "")
-    .replace(/\\x20/g, " ")
-    .replace(/\\x09/g, "\t");
-  if (!pattern) return null;
+function decodeZoektEscapesForHighlight(pattern) {
+  return pattern.replace(/\\x20/g, " ").replace(/\\x09/g, "\t");
+}
+
+function buildRegexHighlightPattern(query, mode, escapeSpace) {
+  const terms = highlightTermsForSearch(query, mode, escapeSpace)
+    .map((term) =>
+      decodeZoektEscapesForHighlight(
+        term.replace(/^content:/i, "").replace(/^file:/i, ""),
+      ),
+    )
+    .filter(Boolean);
+  if (!terms.length) return null;
   try {
-    return new RegExp(`(${pattern})`, "ig");
+    return new RegExp(`(${terms.join("|")})`, "ig");
   } catch (error) {
     return null;
   }
@@ -918,13 +918,11 @@ class ZoektSearchModal extends Modal {
 
   renderResults() {
     this.resultsEl.empty();
-    const highlightQuery =
-      this.mode === SEARCH_MODE_FILE
-        ? normalizeFileQueryInput(this.inputEl.value)
-        : this.inputEl.value.trim();
+    const highlightQuery = this.inputEl.value.trim();
+    const escapeSpace = Boolean(this.plugin.settings.escapeSpace);
     const highlightPattern = this.regex
-      ? buildRegexHighlightPattern(highlightQuery, this.mode)
-      : buildLiteralHighlightPattern(highlightQuery);
+      ? buildRegexHighlightPattern(highlightQuery, this.mode, escapeSpace)
+      : buildLiteralHighlightPattern(highlightQuery, this.mode, escapeSpace);
     if (this.regex && !highlightPattern && highlightQuery) {
       this.plugin.logDiag("result", "regex_highlight_pattern_error", {
         mode: this.mode,
