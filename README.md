@@ -25,3 +25,6 @@ The modal UI structure and styling are based on [Obsidian Omnisearch](https://gi
 ## License
 
 GPL-3.0-only. See [LICENSE](LICENSE).
+
+Omnisearch distributes the GPL version 3 license text and does not state "or later".
+`GPL-3.0-only` is the SPDX expression for GPLv3 with no later-version grant.
