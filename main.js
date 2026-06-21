@@ -298,8 +298,9 @@ class ZoektSearchPlugin extends Plugin {
       id: TOGGLE_REGEX_COMMAND_ID,
       name: "Toggle Regex in search window",
       callback: () => {
-        if (this.activeSearchModal) {
-          this.activeSearchModal.toggleRegex("command_toggle_regex");
+        const modal = this.activeSearchModal;
+        if (modal && Date.now() - (modal.lastScopedToggleAt || 0) > 100) {
+          modal.toggleRegex("command_toggle_regex");
         }
       },
     });
@@ -320,17 +321,21 @@ class ZoektSearchPlugin extends Plugin {
   }
 
   getToggleRegexShortcutLabel() {
-    const manager = this.app.hotkeyManager;
-    const commandId = this.getPluginCommandId(TOGGLE_REGEX_COMMAND_ID);
-    let hotkeys = [];
-    if (manager && typeof manager.getHotkeys === "function") {
-      hotkeys = manager.getHotkeys(commandId) || [];
-    } else if (manager && manager.customKeys) {
-      hotkeys = manager.customKeys[commandId] || [];
-    }
-
+    const hotkeys = this.getToggleRegexHotkeys();
     if (!hotkeys.length) return "No hotkey";
     return hotkeys.map((hotkey) => this.formatHotkey(hotkey)).join(", ");
+  }
+
+  getToggleRegexHotkeys() {
+    const manager = this.app.hotkeyManager;
+    const commandId = this.getPluginCommandId(TOGGLE_REGEX_COMMAND_ID);
+    if (manager && typeof manager.getHotkeys === "function") {
+      return manager.getHotkeys(commandId) || [];
+    }
+    if (manager && manager.customKeys) {
+      return manager.customKeys[commandId] || [];
+    }
+    return [];
   }
 
   formatHotkey(hotkey) {
@@ -535,6 +540,7 @@ class ZoektSearchModal extends Modal {
       event.preventDefault();
       this.openSelected("scope_enter");
     });
+    this.registerToggleRegexHotkeys();
   }
 
   onOpen() {
@@ -637,6 +643,31 @@ class ZoektSearchModal extends Modal {
     if (this.inputEl && this.inputEl.value.trim()) {
       this.scheduleSearch();
     }
+  }
+
+  registerToggleRegexHotkeys() {
+    const hotkeys = this.plugin.getToggleRegexHotkeys();
+    const seen = new Set();
+    for (const hotkey of hotkeys) {
+      const modifiers = hotkey.modifiers || [];
+      const key = hotkey.key || "";
+      if (!key) continue;
+      const keys = key.length === 1 ? [key, key.toUpperCase()] : [key];
+      for (const candidate of keys) {
+        const signature = `${modifiers.join("+")}+${candidate}`;
+        if (seen.has(signature)) continue;
+        seen.add(signature);
+        this.scope.register(modifiers, candidate, (event) => {
+          event.preventDefault();
+          this.lastScopedToggleAt = Date.now();
+          this.toggleRegex("scope_hotkey_toggle_regex");
+        });
+      }
+    }
+    this.plugin.logDiag("probe", "register_toggle_regex_hotkeys", {
+      count: seen.size,
+      label: this.plugin.getToggleRegexShortcutLabel(),
+    });
   }
 
   updateRegexStatus() {
