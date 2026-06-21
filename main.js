@@ -110,6 +110,29 @@ function queryTerms(query) {
   return terms.slice(0, 8);
 }
 
+function buildLiteralHighlightPattern(query) {
+  const terms = queryTerms(query);
+  if (!terms.length) return null;
+  return new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "ig");
+}
+
+function buildRegexHighlightPattern(query, mode) {
+  const raw =
+    mode === SEARCH_MODE_FILE ? normalizeFileQueryInput(query) : String(query || "").trim();
+  if (!raw) return null;
+  const pattern = raw
+    .replace(/^content:/i, "")
+    .replace(/^file:/i, "")
+    .replace(/\\x20/g, " ")
+    .replace(/\\x09/g, "\t");
+  if (!pattern) return null;
+  try {
+    return new RegExp(`(${pattern})`, "ig");
+  } catch (error) {
+    return null;
+  }
+}
+
 function normalizeInitialQuery(text) {
   return String(text || "").replace(/\s+/g, " ").trim().slice(0, 500);
 }
@@ -861,9 +884,15 @@ class ZoektSearchModal extends Modal {
       this.mode === SEARCH_MODE_FILE
         ? normalizeFileQueryInput(this.inputEl.value)
         : this.inputEl.value.trim();
-    const terms = this.regex
-      ? []
-      : queryTerms(highlightQuery);
+    const highlightPattern = this.regex
+      ? buildRegexHighlightPattern(highlightQuery, this.mode)
+      : buildLiteralHighlightPattern(highlightQuery);
+    if (this.regex && !highlightPattern && highlightQuery) {
+      this.plugin.logDiag("result", "regex_highlight_pattern_error", {
+        mode: this.mode,
+        query: highlightQuery,
+      });
+    }
 
     this.results.forEach((result, index) => {
       const item = this.resultsEl.createDiv({
@@ -930,20 +959,23 @@ class ZoektSearchModal extends Modal {
       ]
         .filter(Boolean)
         .join(" ");
-      this.appendHighlightedText(body, excerpt, terms);
+      this.appendHighlightedText(body, excerpt, highlightPattern);
     });
   }
 
-  appendHighlightedText(parent, text, terms) {
-    if (!terms.length) {
+  appendHighlightedText(parent, text, pattern) {
+    if (!pattern) {
       parent.setText(text);
       return;
     }
 
-    const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "ig");
     let lastIndex = 0;
     let match;
     while ((match = pattern.exec(text))) {
+      if (match[0].length === 0) {
+        pattern.lastIndex += 1;
+        continue;
+      }
       if (match.index > lastIndex) {
         parent.createSpan({ text: text.slice(lastIndex, match.index) });
       }
