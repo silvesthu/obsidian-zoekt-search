@@ -1,7 +1,7 @@
 {
   "id": "obsidian-zoekt-search",
   "name": "Obsidian Zoekt Search",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.7.2",
   "description": "Prompt-style vault search backed by a local Zoekt API.",
   "author": "",
