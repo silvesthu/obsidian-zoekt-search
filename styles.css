@@ -117,7 +117,7 @@
 
 @media only screen and (max-width: 600px) {
   .zoekt-search-input-container {
-    flex-direction: column;
+    flex-direction: row;
   }
 
   .zoekt-search-input-container__buttons {
@@ -141,6 +141,22 @@
 .zoekt-search-input-field {
   position: relative;
   flex-grow: 1;
+  min-width: 0;
+}
+
+.zoekt-search-regex-status {
+  color: var(--text-muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding-inline-end: 0.5em;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.zoekt-search-regex-status.is-enabled {
+  color: var(--interactive-accent);
 }
 
 .zoekt-search-result-highlight .cm-content ::selection,

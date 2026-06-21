@@ -15,8 +15,15 @@ Prompt-style vault search for Obsidian backed by a local Zoekt HTTP API.
 - **Log level:** `Basic` logs startup and errors only; `Verbose` logs search, UI, and selection diagnostics.
 - **Maximum matches:** maximum match rows to request and display.
 - **Context lines:** surrounding lines returned for each match.
-- **Regex:** pass the query through as a raw Zoekt/RE2 expression.
+- **Regex:** default regex state for newly opened search windows.
 - **Literal spaces:** treat spaces as part of one literal phrase; disable to search words as AND terms.
+
+## Commands
+
+- **Search Text:** searches file contents.
+- **Search File:** searches vault-relative filenames with Zoekt `file:` atoms. Typing `file:foo` is also accepted; the `file:` prefix is stripped before building the filename query.
+
+In either search window, `Ctrl+R` toggles Regex for that window only. The current state is shown at the right of the search box.
 
 ## Attribution
 

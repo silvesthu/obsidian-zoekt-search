@@ -16,6 +16,10 @@ const fs = require("fs");
 const path = require("path");
 const { URL } = require("url");
 
+const SEARCH_MODE_TEXT = "text";
+const SEARCH_MODE_FILE = "file";
+const REGEX_TOGGLE_LABEL = "Ctrl+R";
+
 const DEFAULT_SETTINGS = {
   endpoint: "http://127.0.0.1:6070/api/search",
   zoektRepo: "",
@@ -114,23 +118,46 @@ function escapeForContent(term) {
   return escapeRegExp(term).replace(/"/g, "\\x22");
 }
 
-function transformQuery(raw, regex, escapeSpace) {
+function encodeLiteralSpaces(query) {
+  return query.replace(/ /g, "\\x20").replace(/\t/g, "\\x09");
+}
+
+function normalizeFileQueryInput(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/^file:/i, "")
+    .trim();
+}
+
+function transformTextQuery(raw, regex, escapeSpace) {
   let query = String(raw || "").trim();
   if (regex) {
-    if (escapeSpace) {
-      query = query.replace(/ /g, "\\x20").replace(/\t/g, "\\x09");
-    }
+    if (escapeSpace) query = encodeLiteralSpaces(query);
     return query;
   }
 
   if (escapeSpace) {
-    return `content:${escapeForContent(query)
-      .replace(/ /g, "\\x20")
-      .replace(/\t/g, "\\x09")}`;
+    return `content:${encodeLiteralSpaces(escapeForContent(query))}`;
   }
 
   const terms = query.split(/\s+/).filter(Boolean);
   return terms.map((term) => `content:${escapeForContent(term)}`).join(" ");
+}
+
+function transformFileQuery(raw, regex, escapeSpace) {
+  let query = normalizeFileQueryInput(raw);
+  if (!query) return "";
+  if (regex) {
+    if (escapeSpace) query = encodeLiteralSpaces(query);
+    return `file:${query}`;
+  }
+
+  if (escapeSpace) {
+    return `file:${encodeLiteralSpaces(escapeRegExp(query))}`;
+  }
+
+  const terms = query.split(/\s+/).filter(Boolean);
+  return terms.map((term) => `file:${escapeRegExp(term)}`).join(" ");
 }
 
 function buildZoektQuery(query, repo) {
@@ -172,6 +199,7 @@ function flattenZoektResponse(data, max, contextLines) {
       for (const match of file.LineMatches) {
         if (rows.length >= max) break outer;
         rows.push({
+          kind: "line",
           repo,
           file: fileName,
           line: Number(match.LineNumber || 0),
@@ -185,6 +213,7 @@ function flattenZoektResponse(data, max, contextLines) {
       for (const match of file.ChunkMatches) {
         if (rows.length >= max) break outer;
         rows.push({
+          kind: "chunk",
           repo,
           file: fileName,
           line: Number(match.ContentStart?.LineNumber || 0),
@@ -196,6 +225,18 @@ function flattenZoektResponse(data, max, contextLines) {
           ? Math.max(1, match.Ranges.length)
           : 1;
       }
+    } else if (fileName) {
+      if (rows.length >= max) break outer;
+      rows.push({
+        kind: "file",
+        repo,
+        file: fileName,
+        line: 0,
+        text: fileName,
+        before: [],
+        after: [],
+      });
+      shownFragments += 1;
     }
   }
 
@@ -216,12 +257,14 @@ function rowsToResults(rows, plugin) {
   for (const [index, row] of (rows || []).entries()) {
     const path = plugin.toVaultRelativePath(row.file);
     if (!path || path.startsWith(".obsidian/")) continue;
+    const line = Number(row.line || 0);
     results.push({
-      id: `${path}:${row.line || 1}:${index}`,
+      id: `${path}:${line}:${index}`,
       path,
       title: basename(path),
       folder: folderPath(path),
-      line: row.line || 1,
+      kind: row.kind || "line",
+      line,
       text: row.text || "",
       before: row.before || [],
       after: row.after || [],
@@ -241,12 +284,18 @@ class ZoektSearchPlugin extends Plugin {
 
     this.addCommand({
       id: "vault-search",
-      name: "Vault search",
-      callback: () => new ZoektSearchModal(this).open(),
+      name: "Search Text",
+      callback: () => new ZoektSearchModal(this, SEARCH_MODE_TEXT).open(),
+    });
+
+    this.addCommand({
+      id: "search-file",
+      name: "Search File",
+      callback: () => new ZoektSearchModal(this, SEARCH_MODE_FILE).open(),
     });
 
     this.addRibbonIcon("search", "Zoekt search", () => {
-      new ZoektSearchModal(this).open();
+      new ZoektSearchModal(this, SEARCH_MODE_TEXT).open();
     });
 
     this.addSettingTab(new ZoektSearchSettingTab(this.app, this));
@@ -327,18 +376,19 @@ class ZoektSearchPlugin extends Plugin {
     return normalizePath(value.replace(/^\/+/, ""));
   }
 
-  async search(query) {
+  async search(query, options = {}) {
     const context = Number(this.settings.contextLines) || 0;
     const max = Number(this.settings.maxResults) || 80;
     const repo = this.getZoektRepo();
     if (!repo) {
       throw new Error("Zoekt repo is not configured and vault folder name is unavailable.");
     }
-    const transformed = transformQuery(
-      query,
-      Boolean(this.settings.regex),
-      Boolean(this.settings.escapeSpace),
-    );
+    const mode = options.mode || SEARCH_MODE_TEXT;
+    const regex = Boolean(options.regex);
+    const transformed =
+      mode === SEARCH_MODE_FILE
+        ? transformFileQuery(query, regex, Boolean(this.settings.escapeSpace))
+        : transformTextQuery(query, regex, Boolean(this.settings.escapeSpace));
     const body = {
       Q: buildZoektQuery(transformed, repo),
       Opts: {
@@ -350,6 +400,8 @@ class ZoektSearchPlugin extends Plugin {
 
     this.logDiag("probe", "search_request", {
       query,
+      mode,
+      regex,
       repo,
       max,
       context,
@@ -417,9 +469,11 @@ class ZoektSearchPlugin extends Plugin {
 }
 
 class ZoektSearchModal extends Modal {
-  constructor(plugin) {
+  constructor(plugin, mode = SEARCH_MODE_TEXT) {
     super(plugin.app);
     this.plugin = plugin;
+    this.mode = mode;
+    this.regex = Boolean(plugin.settings.regex);
     this.results = [];
     this.selectedIndex = 0;
     this.requestId = 0;
@@ -444,6 +498,10 @@ class ZoektSearchModal extends Modal {
       event.preventDefault();
       this.openSelected("scope_enter");
     });
+    this.scope.register(["Mod"], "R", (event) => {
+      event.preventDefault();
+      this.toggleRegex("scope_toggle_regex");
+    });
   }
 
   onOpen() {
@@ -462,10 +520,28 @@ class ZoektSearchModal extends Modal {
       type: "text",
       cls: "prompt-input",
       attr: {
-        placeholder: "Zoekt Search - Vault",
+        placeholder:
+          this.mode === SEARCH_MODE_FILE
+            ? "Search File - Vault"
+            : "Search Text - Vault",
         spellcheck: "false",
       },
     });
+    this.regexStatusEl = inputContainer.createDiv({
+      cls: "zoekt-search-regex-status",
+      attr: {
+        title: `Toggle regex (${REGEX_TOGGLE_LABEL})`,
+      },
+    });
+    this.regexStatusEl.addEventListener("mousedown", (event) =>
+      event.preventDefault(),
+    );
+    this.regexStatusEl.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.toggleRegex("mouse_toggle_regex");
+      this.inputEl.focus();
+    });
+    this.updateRegexStatus();
     if (initialQuery) {
       this.inputEl.value = initialQuery;
       this.plugin.logDiag("probe", "initial_query_from_selection", {
@@ -501,6 +577,11 @@ class ZoektSearchModal extends Modal {
   }
 
   onKeydown(event) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r") {
+      event.preventDefault();
+      this.toggleRegex("dom_toggle_regex");
+      return;
+    }
     if (event.key === "ArrowDown") {
       event.preventDefault();
       this.moveSelection(1, "dom_arrow_down");
@@ -511,6 +592,27 @@ class ZoektSearchModal extends Modal {
       event.preventDefault();
       this.openSelected("dom_enter");
     }
+  }
+
+  toggleRegex(source) {
+    this.regex = !this.regex;
+    this.plugin.logDiag("probe", "toggle_regex", {
+      source,
+      mode: this.mode,
+      regex: this.regex,
+    });
+    this.updateRegexStatus();
+    if (this.inputEl && this.inputEl.value.trim()) {
+      this.scheduleSearch();
+    }
+  }
+
+  updateRegexStatus() {
+    if (!this.regexStatusEl) return;
+    this.regexStatusEl.setText(
+      `Regex: ${this.regex ? "ON" : "OFF"} (${REGEX_TOGGLE_LABEL})`,
+    );
+    this.regexStatusEl.toggleClass("is-enabled", this.regex);
   }
 
   getInitialQuery(stage) {
@@ -595,6 +697,8 @@ class ZoektSearchModal extends Modal {
         modalWidth: Math.round(rect.width),
         inputWidth: Math.round(inputRect.width),
         inputTop: Math.round(inputRect.top),
+        mode: this.mode,
+        regex: this.regex,
         results: this.results.length,
       });
     } catch (error) {
@@ -649,7 +753,10 @@ class ZoektSearchModal extends Modal {
     this.plugin.logDiag("probe", "input_query", { query });
     this.resultsEl.setText("Searching...");
     try {
-      const data = await this.plugin.search(query);
+      const data = await this.plugin.search(query, {
+        mode: this.mode,
+        regex: this.regex,
+      });
       if (id !== this.requestId) return;
       this.results = rowsToResults(data.rows || [], this.plugin);
       this.selectedIndex = 0;
@@ -685,9 +792,13 @@ class ZoektSearchModal extends Modal {
 
   renderResults() {
     this.resultsEl.empty();
-    const terms = this.plugin.settings.regex
+    const highlightQuery =
+      this.mode === SEARCH_MODE_FILE
+        ? normalizeFileQueryInput(this.inputEl.value)
+        : this.inputEl.value.trim();
+    const terms = this.regex
       ? []
-      : queryTerms(this.inputEl.value.trim());
+      : queryTerms(highlightQuery);
 
     this.results.forEach((result, index) => {
       const item = this.resultsEl.createDiv({
@@ -731,7 +842,12 @@ class ZoektSearchModal extends Modal {
       title.createSpan({ text: result.title });
       titleContainer.createSpan({
         cls: "zoekt-search-result__counter",
-        text: result.line ? `line ${result.line}` : "match",
+        text:
+          result.kind === "file"
+            ? "file"
+            : result.line
+              ? `line ${result.line}`
+              : "match",
       });
 
       if (result.folder) {
