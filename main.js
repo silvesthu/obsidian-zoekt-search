@@ -266,7 +266,7 @@ class ZoektSearchPlugin extends Plugin {
 
   getDefaultZoektRepo() {
     const basePath = this.getVaultBasePath();
-    if (!basePath) return "obsidian";
+    if (!basePath) return "";
     return path.basename(normalizeWinPath(basePath)).toLowerCase();
   }
 
@@ -331,6 +331,9 @@ class ZoektSearchPlugin extends Plugin {
     const context = Number(this.settings.contextLines) || 0;
     const max = Number(this.settings.maxResults) || 80;
     const repo = this.getZoektRepo();
+    if (!repo) {
+      throw new Error("Zoekt repo is not configured and vault folder name is unavailable.");
+    }
     const transformed = transformQuery(
       query,
       Boolean(this.settings.regex),
@@ -425,7 +428,7 @@ class ZoektSearchModal extends Modal {
     this.initialQuery = this.getInitialQuery("constructor");
 
     this.modalEl.replaceChildren();
-    this.modalEl.addClass("omnisearch-modal", "prompt");
+    this.modalEl.addClass("zoekt-search-modal", "prompt");
     this.modalEl.removeClass("modal");
     this.modalEl.tabIndex = -1;
 
@@ -450,16 +453,16 @@ class ZoektSearchModal extends Modal {
       this.initialQuery || this.getInitialQuery("on_open");
 
     const inputContainer = this.modalEl.createDiv({
-      cls: "omnisearch-input-container",
+      cls: "zoekt-search-input-container",
     });
     const inputWrap = inputContainer.createDiv({
-      cls: "omnisearch-input-field",
+      cls: "zoekt-search-input-field",
     });
     this.inputEl = inputWrap.createEl("input", {
       type: "text",
       cls: "prompt-input",
       attr: {
-        placeholder: "Omnisearch - Vault",
+        placeholder: "Zoekt Search - Vault",
         spellcheck: "false",
       },
     });
@@ -688,7 +691,7 @@ class ZoektSearchModal extends Modal {
 
     this.results.forEach((result, index) => {
       const item = this.resultsEl.createDiv({
-        cls: "suggestion-item omnisearch-result",
+        cls: "suggestion-item zoekt-search-result",
         attr: {
           "data-result-id": result.path,
           "data-match-id": result.id,
@@ -715,34 +718,34 @@ class ZoektSearchModal extends Modal {
       });
 
       const main = item.createDiv({
-        cls: "omnisearch-result__content",
+        cls: "zoekt-search-result__content",
       });
       const titleContainer = main.createDiv({
-        cls: "omnisearch-result__title-container",
+        cls: "zoekt-search-result__title-container",
       });
       const title = titleContainer.createSpan({
-        cls: "omnisearch-result__title",
+        cls: "zoekt-search-result__title",
       });
-      const icon = title.createSpan({ cls: "omnisearch-result__icon" });
+      const icon = title.createSpan({ cls: "zoekt-search-result__icon" });
       setIcon(icon, "file-text");
       title.createSpan({ text: result.title });
       titleContainer.createSpan({
-        cls: "omnisearch-result__counter",
+        cls: "zoekt-search-result__counter",
         text: result.line ? `line ${result.line}` : "match",
       });
 
       if (result.folder) {
         const folder = main.createDiv({
-          cls: "omnisearch-result__folder-path",
+          cls: "zoekt-search-result__folder-path",
         });
-        const folderIcon = folder.createSpan({ cls: "omnisearch-result__icon" });
+        const folderIcon = folder.createSpan({ cls: "zoekt-search-result__icon" });
         setIcon(folderIcon, "folder");
         folder.createSpan({ text: result.folder });
       }
 
       const excerptWrap = main.createDiv();
       excerptWrap.setAttr("style", "display: flex; flex-direction: row;");
-      const body = excerptWrap.createDiv({ cls: "omnisearch-result__body" });
+      const body = excerptWrap.createDiv({ cls: "zoekt-search-result__body" });
       const excerpt = [
         ...result.before.slice(-1),
         result.text,
@@ -768,7 +771,7 @@ class ZoektSearchModal extends Modal {
         parent.createSpan({ text: text.slice(lastIndex, match.index) });
       }
       parent.createSpan({
-        cls: "omnisearch-highlight omnisearch-default-highlight",
+        cls: "zoekt-search-highlight zoekt-search-default-highlight",
         text: match[0],
       });
       lastIndex = match.index + match[0].length;
@@ -804,7 +807,7 @@ class ZoektSearchSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Zoekt repo")
       .setDesc(
-        `Blank uses the vault folder name lowercased: ${this.plugin.getDefaultZoektRepo()}.`,
+        `Blank uses the vault folder name lowercased when available: ${this.plugin.getDefaultZoektRepo() || "unavailable"}.`,
       )
       .addText((text) =>
         text

@@ -1,7 +1,7 @@
 {
   "name": "obsidian-zoekt-search",
   "version": "0.1.0",
-  "description": "Omnisearch-style vault search for Obsidian backed by a local Zoekt API.",
+  "description": "Prompt-style vault search for Obsidian backed by a local Zoekt API.",
   "license": "GPL-3.0-only",
   "private": true,
   "keywords": [

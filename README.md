@@ -1,12 +1,12 @@
 # Obsidian Zoekt Search
 
-Omnisearch-style vault search for Obsidian backed by a local Zoekt HTTP API.
+Prompt-style vault search for Obsidian backed by a local Zoekt HTTP API.
 
 ## Requirements
 
 - Obsidian desktop.
 - A local Zoekt webserver listening at `http://127.0.0.1:6070/api/search`.
-- A Zoekt repository/index for the vault. By default, the plugin uses the vault folder name lowercased, so `C:\Data\Obsidian` maps to repo `obsidian`.
+- A Zoekt repository/index for the vault. By default, the plugin uses the vault folder name lowercased.
 
 ## Settings
 

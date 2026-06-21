@@ -3,7 +3,7 @@
   "name": "Obsidian Zoekt Search",
   "version": "0.1.0",
   "minAppVersion": "1.7.2",
-  "description": "Omnisearch-style vault search backed by a local Zoekt API.",
-  "author": "Local",
+  "description": "Prompt-style vault search backed by a local Zoekt API.",
+  "author": "",
   "isDesktopOnly": true
 }
