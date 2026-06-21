@@ -551,18 +551,15 @@ class ZoektSearchModal extends Modal {
     this.modalEl.removeClass("modal");
     this.modalEl.tabIndex = -1;
 
-    this.scope.register([], "ArrowDown", (event) => {
-      event.preventDefault();
-      this.moveSelection(1, "scope_arrow_down");
-    });
-    this.scope.register([], "ArrowUp", (event) => {
-      event.preventDefault();
-      this.moveSelection(-1, "scope_arrow_up");
-    });
-    this.scope.register([], "Enter", (event) => {
-      event.preventDefault();
-      this.openSelected("scope_enter");
-    });
+    this.scope.register([], "ArrowDown", (event) =>
+      this.handleKeyboardAction(event, "ArrowDown", "scope_arrow_down"),
+    );
+    this.scope.register([], "ArrowUp", (event) =>
+      this.handleKeyboardAction(event, "ArrowUp", "scope_arrow_up"),
+    );
+    this.scope.register([], "Enter", (event) =>
+      this.handleKeyboardAction(event, "Enter", "scope_enter"),
+    );
     this.registerToggleRegexHotkeys();
   }
 
@@ -659,15 +656,40 @@ class ZoektSearchModal extends Modal {
   }
 
   onKeydown(event) {
-    if (event.key === "ArrowDown") {
+    if (
+      event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
+      event.key === "Enter"
+    ) {
+      this.handleKeyboardAction(event, event.key, `dom_${event.key.toLowerCase()}`);
+    }
+  }
+
+  handleKeyboardAction(event, key, source) {
+    const eventTime = Number(event && event.timeStamp ? event.timeStamp : 0);
+    const now = Date.now();
+    const last = this.lastKeyboardAction;
+    if (
+      last &&
+      last.key === key &&
+      ((eventTime && last.eventTime === eventTime) || now - last.at < 50)
+    ) {
       event.preventDefault();
-      this.moveSelection(1, "dom_arrow_down");
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      this.moveSelection(-1, "dom_arrow_up");
-    } else if (event.key === "Enter") {
-      event.preventDefault();
-      this.openSelected("dom_enter");
+      this.plugin.logDiag("probe", "keyboard_duplicate_suppressed", {
+        key,
+        source,
+      });
+      return;
+    }
+
+    this.lastKeyboardAction = { key, eventTime, at: now };
+    event.preventDefault();
+    if (key === "ArrowDown") {
+      this.moveSelection(1, source);
+    } else if (key === "ArrowUp") {
+      this.moveSelection(-1, source);
+    } else if (key === "Enter") {
+      this.openSelected(source);
     }
   }
 
