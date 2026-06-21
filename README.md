@@ -23,7 +23,7 @@ Prompt-style vault search for Obsidian backed by a local Zoekt HTTP API.
 - **Search Text:** searches file contents.
 - **Search File:** searches vault-relative filenames with Zoekt `file:` atoms. Typing `file:foo` is also accepted; the `file:` prefix is stripped before building the filename query.
 
-In either search window, `Ctrl+R` toggles Regex for that window only. The current state is shown at the right of the search box.
+In either search window, the **Toggle Regex in search window** command toggles Regex for that window only. Assign a hotkey to that command in Obsidian's hotkey settings. The current Regex state and configured hotkey are shown at the right of the search box.
 
 ## Attribution
 

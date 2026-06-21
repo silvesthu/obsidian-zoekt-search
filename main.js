@@ -18,7 +18,7 @@ const { URL } = require("url");
 
 const SEARCH_MODE_TEXT = "text";
 const SEARCH_MODE_FILE = "file";
-const REGEX_TOGGLE_LABEL = "Ctrl+R";
+const TOGGLE_REGEX_COMMAND_ID = "toggle-regex";
 
 const DEFAULT_SETTINGS = {
   endpoint: "http://127.0.0.1:6070/api/search",
@@ -294,6 +294,16 @@ class ZoektSearchPlugin extends Plugin {
       callback: () => new ZoektSearchModal(this, SEARCH_MODE_FILE).open(),
     });
 
+    this.addCommand({
+      id: TOGGLE_REGEX_COMMAND_ID,
+      name: "Toggle Regex in search window",
+      callback: () => {
+        if (this.activeSearchModal) {
+          this.activeSearchModal.toggleRegex("command_toggle_regex");
+        }
+      },
+    });
+
     this.addRibbonIcon("search", "Zoekt search", () => {
       new ZoektSearchModal(this, SEARCH_MODE_TEXT).open();
     });
@@ -303,6 +313,33 @@ class ZoektSearchPlugin extends Plugin {
 
   async saveSettings() {
     await this.saveData(this.settings);
+  }
+
+  getPluginCommandId(id) {
+    return `${this.manifest.id}:${id}`;
+  }
+
+  getToggleRegexShortcutLabel() {
+    const manager = this.app.hotkeyManager;
+    const commandId = this.getPluginCommandId(TOGGLE_REGEX_COMMAND_ID);
+    let hotkeys = [];
+    if (manager && typeof manager.getHotkeys === "function") {
+      hotkeys = manager.getHotkeys(commandId) || [];
+    } else if (manager && manager.customKeys) {
+      hotkeys = manager.customKeys[commandId] || [];
+    }
+
+    if (!hotkeys.length) return "No hotkey";
+    return hotkeys.map((hotkey) => this.formatHotkey(hotkey)).join(", ");
+  }
+
+  formatHotkey(hotkey) {
+    const modifiers = hotkey.modifiers || [];
+    const key = hotkey.key || "";
+    return [...modifiers, key]
+      .filter(Boolean)
+      .map((part) => (part === "Mod" ? "Ctrl/Cmd" : part))
+      .join("+");
   }
 
   getVaultBasePath() {
@@ -498,14 +535,11 @@ class ZoektSearchModal extends Modal {
       event.preventDefault();
       this.openSelected("scope_enter");
     });
-    this.scope.register(["Mod"], "R", (event) => {
-      event.preventDefault();
-      this.toggleRegex("scope_toggle_regex");
-    });
   }
 
   onOpen() {
     this.plugin.logDiag("probe", "modal_open");
+    this.plugin.activeSearchModal = this;
     this.modalEl.empty();
     const initialQuery =
       this.initialQuery || this.getInitialQuery("on_open");
@@ -530,7 +564,7 @@ class ZoektSearchModal extends Modal {
     this.regexStatusEl = inputContainer.createDiv({
       cls: "zoekt-search-regex-status",
       attr: {
-        title: `Toggle regex (${REGEX_TOGGLE_LABEL})`,
+        title: "Toggle regex",
       },
     });
     this.regexStatusEl.addEventListener("mousedown", (event) =>
@@ -572,16 +606,14 @@ class ZoektSearchModal extends Modal {
 
   onClose() {
     this.plugin.logDiag("probe", "modal_close");
+    if (this.plugin.activeSearchModal === this) {
+      this.plugin.activeSearchModal = null;
+    }
     window.clearTimeout(this.debounce);
     this.modalEl.empty();
   }
 
   onKeydown(event) {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "r") {
-      event.preventDefault();
-      this.toggleRegex("dom_toggle_regex");
-      return;
-    }
     if (event.key === "ArrowDown") {
       event.preventDefault();
       this.moveSelection(1, "dom_arrow_down");
@@ -609,9 +641,11 @@ class ZoektSearchModal extends Modal {
 
   updateRegexStatus() {
     if (!this.regexStatusEl) return;
+    const shortcut = this.plugin.getToggleRegexShortcutLabel();
     this.regexStatusEl.setText(
-      `Regex: ${this.regex ? "ON" : "OFF"} (${REGEX_TOGGLE_LABEL})`,
+      `Regex: ${this.regex ? "ON" : "OFF"} (${shortcut})`,
     );
+    this.regexStatusEl.setAttr("title", `Toggle regex (${shortcut})`);
     this.regexStatusEl.toggleClass("is-enabled", this.regex);
   }
 
@@ -840,14 +874,10 @@ class ZoektSearchModal extends Modal {
       const icon = title.createSpan({ cls: "zoekt-search-result__icon" });
       setIcon(icon, "file-text");
       title.createSpan({ text: result.title });
+      const counterText = result.line ? `line ${result.line}` : "";
       titleContainer.createSpan({
         cls: "zoekt-search-result__counter",
-        text:
-          result.kind === "file"
-            ? "file"
-            : result.line
-              ? `line ${result.line}`
-              : "match",
+        text: counterText,
       });
 
       if (result.folder) {
