@@ -150,7 +150,7 @@
   flex: 0 0 auto;
   font-size: 0.75rem;
   line-height: 1;
-  padding-inline-end: 0.5em;
+  padding-inline: 0.5em;
   user-select: none;
   white-space: nowrap;
 }
